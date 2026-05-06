@@ -39,12 +39,24 @@ def calculate_pairwise_distance(D_x1, D_x2):
         return np.linalg.norm(D_x1.flatten() - D_x2.flatten())
 
 
+def extract_histogram_features(image, bins=32):
+    image = image.resize((224, 224))
+    image_array = np.array(image)
+    histogram = []
+    for channel in range(3):
+        hist = np.histogram(image_array[:, :, channel], bins=bins, range=(0, 255))[0].astype(np.float32)
+        histogram.append(hist)
+    histogram = np.concatenate(histogram)
+    histogram /= np.sum(histogram) + 1e-6
+    return histogram
+
+
 def load_image_and_extract_features(image_path):
     """
     載入圖片、提取特徵、展平並執行 L2 正規化。
     """
+    image = Image.open(image_path).convert('RGB')
     if TORCH_AVAILABLE:
-        image = Image.open(image_path).convert('RGB')
         image = transform(image).unsqueeze(0)
         with torch.no_grad():
             features = model(image)
@@ -52,9 +64,7 @@ def load_image_and_extract_features(image_path):
             features = F.normalize(features, p=2, dim=1)
         return features
     else:
-        image = Image.open(image_path).convert('RGB')
-        image_array = np.array(image)
-        features = np.mean(image_array, axis=(0,1))
+        features = extract_histogram_features(image)
         norm = np.linalg.norm(features)
         if norm > 0:
             features = features / norm
@@ -73,7 +83,7 @@ if TORCH_AVAILABLE:
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 else:
-    print("使用簡化特徵提取（像素平均）")
+    print("使用簡化特徵提取（RGB 直方圖）")
 
 # 圖片資料夾路徑
 image_dirs = [
@@ -84,13 +94,14 @@ image_dirs = [
 
 # 載入圖片並提取特徵
 features = []
+image_paths = []
 for dir_path in image_dirs:
-    # 找到資料夾中的第一個圖片檔案
     files = [f for f in os.listdir(dir_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
     if files:
         image_path = os.path.join(dir_path, files[0])
         feature = load_image_and_extract_features(image_path)
         features.append(feature)
+        image_paths.append(image_path)
     else:
         print(f"警告: {dir_path} 中沒有找到圖片檔案")
 
@@ -114,5 +125,8 @@ compare_1_2 = calculate_pairwise_distance(feature_img_1, feature_img_2)
 compare_1_3 = calculate_pairwise_distance(feature_img_1, feature_img_3)
 
 print("數字越小越相似")
+print(f"圖片1: {image_paths[0]}")
+print(f"圖片2: {image_paths[1]}")
+print(f"圖片3: {image_paths[2]}")
 print(f"圖片 1 與圖片 2 比對值: {compare_1_2.item() if TORCH_AVAILABLE else compare_1_2:.4f}")
 print(f"圖片 1 與圖片 3 比對值: {compare_1_3.item() if TORCH_AVAILABLE else compare_1_3:.4f}")
